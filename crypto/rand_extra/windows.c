@@ -58,16 +58,34 @@ void CRYPTO_sysrand(uint8_t *out, size_t requested) {
 
 // See: https://learn.microsoft.com/en-us/windows/win32/seccng/processprng
 typedef BOOL (WINAPI *ProcessPrngFunction)(PBYTE pbData, SIZE_T cbData);
+typedef BOOLEAN (WINAPI *RtlGenRandomFunction)(PVOID RandomBuffer, ULONG RandomBufferLength);
+
 static ProcessPrngFunction g_processprng_fn = NULL;
+static RtlGenRandomFunction g_genrandom_fn = NULL;
+
+static void init_genrandom() {
+  HMODULE hmod = LoadLibraryW(L"Advapi32");
+  if (hmod == NULL) {
+    abort();
+  }
+
+  g_genrandom_fn = (RtlGenRandomFunction)GetProcAddress(hmod, "RtlGenRandom");
+  if (g_genrandom_fn == NULL) {
+    abort();
+  }
+}
 
 static void init_processprng(void) {
   HMODULE hmod = LoadLibraryW(L"bcryptprimitives");
   if (hmod == NULL) {
-    abort();
+    init_genrandom();
+    return;
   }
+
   g_processprng_fn = (ProcessPrngFunction)GetProcAddress(hmod, "ProcessPrng");
   if (g_processprng_fn == NULL) {
-    abort();
+    init_genrandom();
+    return;
   }
 }
 
@@ -81,8 +99,14 @@ void CRYPTO_sysrand(uint8_t *out, size_t requested) {
   // On non-UWP configurations, use ProcessPrng instead of BCryptGenRandom
   // to avoid accessing resources that may be unavailable inside the
   // Chromium sandbox. See https://crbug.com/74242
-  if (!g_processprng_fn(out, requested)) {
-    abort();
+  if (g_processprng_fn != NULL) {
+    if (!g_processprng_fn(out, requested)) {
+      abort();
+    }
+  } else {
+    if (!g_genrandom_fn(out, requested)) {
+      abort();
+    }
   }
 }
 
