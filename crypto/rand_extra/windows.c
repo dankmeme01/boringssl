@@ -71,7 +71,10 @@ static void init_genrandom() {
 
   g_genrandom_fn = (RtlGenRandomFunction)GetProcAddress(hmod, "RtlGenRandom");
   if (g_genrandom_fn == NULL) {
-    abort();
+    g_genrandom_fn = (RtlGenRandomFunction)GetProcAddress(hmod, "SystemFunction036");
+    if (g_genrandom_fn == NULL) {
+      abort();
+    }
   }
 }
 
